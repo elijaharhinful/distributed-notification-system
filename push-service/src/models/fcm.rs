@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 pub struct FcmPayload {
     pub to: String,
     pub notification: FcmNotification,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<HashMap<String, String>>,
 }

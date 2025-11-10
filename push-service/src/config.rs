@@ -37,7 +37,8 @@ impl Config {
     pub fn load() -> Result<Self, Error> {
         dotenv().ok();
 
-        let config = envy::from_env::<Self>().map_err(|_| anyhow!("Invalid or missing environmental variable"))?;
+        let config = envy::from_env::<Self>()
+            .map_err(|_| anyhow!("Invalid or missing environmental variable"))?;
         Ok(config)
     }
 }
