@@ -1,12 +1,17 @@
-use anyhow::{Error, Result};
+use anyhow::{Error, Result, anyhow};
 use tokio::time::{Duration, sleep};
 
 use crate::{
-    clients::redis::RedisClient,
+    clients::{redis::RedisClient, template::TemplateServiceClient},
+    config::Config,
     models::{message::NotificationMessage, retry::RetryConfig, status::IdempotencyStatus},
 };
 
-pub async fn process_message(payload: &str, redis_client: &mut RedisClient) -> Result<(), Error> {
+pub async fn process_message(
+    payload: &str,
+    redis_client: &mut RedisClient,
+    template_service_client: &TemplateServiceClient,
+) -> Result<(), Error> {
     let message = serde_json::from_str::<NotificationMessage>(payload)?;
 
     match redis_client
@@ -30,10 +35,47 @@ pub async fn process_message(payload: &str, redis_client: &mut RedisClient) -> R
         .mark_as_processing(&message.idempotency_key)
         .await?;
 
+    let template = match template_service_client
+        .fetch_template(&message.template_code)
+        .await
+    {
+        Ok(template) => template,
+        Err(e) => {
+            redis_client
+                .mark_as_failed(&message.idempotency_key)
+                .await?;
+            return Err(anyhow!("Failed to fetch template: {}", e));
+        }
+    };
+
+    match template_service_client.render_template(&template, &message.variables) {
+        Ok(rendered) => {
+            println!("  - Template: Rendered successfully");
+            rendered
+        }
+        Err(e) => {
+            redis_client
+                .mark_as_failed(&message.idempotency_key)
+                .await?;
+            return Err(anyhow!("Failed to render template: {}", e));
+        }
+    };
+
     Ok(())
 }
 
-pub async fn retry_with_backoff<F, Fut, T, E>(operation: F, config: &RetryConfig) -> Result<T, E>
+impl RetryConfig {
+    pub fn from_config(config: &Config) -> Self {
+        Self {
+            max_attempts: config.max_retry_attempts,
+            initial_delay_ms: config.initial_retry_delay_ms,
+            max_delay_ms: config.max_retry_delay_ms,
+            backoff_multiplier: config.retry_backoff_multiplier,
+        }
+    }
+}
+
+pub async fn retry_with_backoff<F, Fut, T, E>(config: &RetryConfig, operation: F) -> Result<T, E>
 where
     F: Fn() -> Fut,
     Fut: std::future::Future<Output = Result<T, E>>,
@@ -67,11 +109,7 @@ where
 
                 sleep(Duration::from_millis(jittered_delay)).await;
 
-                attempt += 1;
-                delay_ms = std::cmp::min(
-                    delay_ms * config.backoff_multiplier as u64,
-                    config.max_delay_ms,
-                );
+                delay_ms = std::cmp::min(delay_ms * config.backoff_multiplier, config.max_delay_ms);
             }
         }
     }
