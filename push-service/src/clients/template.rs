@@ -4,6 +4,7 @@ use anyhow::{Error, Result, anyhow};
 use reqwest::Client;
 
 use crate::{
+    clients::circuit_breaker::CircuitBreaker,
     config::Config,
     models::{
         retry::RetryConfig,
@@ -16,10 +17,11 @@ pub struct TemplateServiceClient {
     http_client: Client,
     base_url: String,
     retry_config: RetryConfig,
+    circuit_breaker: CircuitBreaker,
 }
 
 impl TemplateServiceClient {
-    pub async fn new(config: &Config) -> Result<Self, Error> {
+    pub async fn new(config: &Config, circuit_breaker: CircuitBreaker) -> Result<Self, Error> {
         let http_client = Client::builder()
             .timeout(Duration::from_secs(10))
             .build()
@@ -28,12 +30,13 @@ impl TemplateServiceClient {
         Ok(Self {
             http_client,
             base_url: config.template_service_url.clone(),
-            retry_config: RetryConfig::from_config(config),
+            retry_config: config.retry_config(),
+            circuit_breaker,
         })
     }
 
     pub async fn fetch_template(
-        &self,
+        &mut self,
         template_code: &str,
         language: Option<&str>,
     ) -> Result<Template, Error> {
@@ -43,9 +46,22 @@ impl TemplateServiceClient {
             self.base_url, template_code, language
         );
 
-        retry_with_backoff(&self.retry_config, || {
+        let http_client = self.http_client.clone();
+        let retry_config = self.retry_config.clone();
+
+        self.circuit_breaker
+            .call(|| Self::fetch_with_retry(http_client.clone(), retry_config.clone(), url.clone()))
+            .await
+    }
+
+    async fn fetch_with_retry(
+        http_client: Client,
+        retry_config: RetryConfig,
+        url: String,
+    ) -> Result<Template, Error> {
+        retry_with_backoff(&retry_config, || {
             let url_clone = url.clone();
-            let client = self.http_client.clone();
+            let client = http_client.clone();
 
             async move {
                 let response = client

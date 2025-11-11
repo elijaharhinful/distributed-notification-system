@@ -3,15 +3,14 @@ use tokio::time::{Duration, sleep};
 
 use crate::{
     clients::{fcm::FcmClient, redis::RedisClient, template::TemplateServiceClient},
-    config::Config,
     models::{message::NotificationMessage, retry::RetryConfig, status::IdempotencyStatus},
 };
 
 pub async fn process_message(
     payload: &str,
     redis_client: &mut RedisClient,
-    template_service_client: &TemplateServiceClient,
-    fcm_client: &FcmClient,
+    template_service_client: &mut TemplateServiceClient,
+    fcm_client: &mut FcmClient,
 ) -> Result<(), Error> {
     let message = serde_json::from_str::<NotificationMessage>(payload)?;
 
@@ -85,17 +84,6 @@ pub async fn process_message(
                 .await?;
 
             Err(anyhow!("Notification failed: {}", e))
-        }
-    }
-}
-
-impl RetryConfig {
-    pub fn from_config(config: &Config) -> Self {
-        Self {
-            max_attempts: config.max_retry_attempts,
-            initial_delay_ms: config.initial_retry_delay_ms,
-            max_delay_ms: config.max_retry_delay_ms,
-            backoff_multiplier: config.retry_backoff_multiplier,
         }
     }
 }

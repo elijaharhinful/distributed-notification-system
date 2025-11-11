@@ -30,7 +30,7 @@ impl RedisClient {
         Ok(Self {
             connection,
             idempotency_ttl_seconds: config.idempotency_ttl_seconds,
-            retry_config: RetryConfig::from_config(config),
+            retry_config: config.retry_config(),
         })
     }
 
