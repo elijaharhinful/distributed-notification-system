@@ -22,7 +22,7 @@ async fn test_valid_messages_are_acknowledged() -> Result<()> {
     let config = Config::load()?;
 
     purge_queue(&config).await?;
-    
+
     let rabbitmq = RabbitMqClient::connect(&config).await?;
 
     let test_message = create_test_notification_message("test_ack");
@@ -45,9 +45,9 @@ async fn test_valid_messages_are_acknowledged() -> Result<()> {
 #[tokio::test]
 async fn test_failed_messages_route_to_dlq() -> Result<()> {
     let config = Config::load()?;
-    
+
     purge_dlq(&config).await?;
-    
+
     let rabbitmq = RabbitMqClient::connect(&config).await?;
 
     let original_message = create_test_notification_message("test_dlq");
@@ -75,9 +75,9 @@ async fn test_failed_messages_route_to_dlq() -> Result<()> {
 #[tokio::test]
 async fn test_rejected_messages_not_requeued() -> Result<()> {
     let config = Config::load()?;
-    
+
     purge_queue(&config).await?;
-    
+
     let rabbitmq = RabbitMqClient::connect(&config).await?;
 
     let test_message = create_test_notification_message("test_reject");
@@ -110,7 +110,7 @@ async fn test_rejected_messages_not_requeued() -> Result<()> {
 #[tokio::test]
 async fn test_concurrent_message_processing() -> Result<()> {
     let config = Config::load()?;
-    
+
     purge_queue(&config).await?;
 
     for i in 0..5 {
@@ -163,9 +163,9 @@ async fn test_concurrent_message_processing() -> Result<()> {
 #[tokio::test]
 async fn test_message_structure_preservation() -> Result<()> {
     let config = Config::load()?;
-    
+
     purge_queue(&config).await?;
-    
+
     let rabbitmq = RabbitMqClient::connect(&config).await?;
 
     let mut variables = HashMap::new();
@@ -215,9 +215,9 @@ async fn test_message_structure_preservation() -> Result<()> {
 #[tokio::test]
 async fn test_dlq_messages_contain_failure_context() -> Result<()> {
     let config = Config::load()?;
-    
+
     purge_dlq(&config).await?;
-    
+
     let rabbitmq = RabbitMqClient::connect(&config).await?;
 
     let original = create_test_notification_message("test_context");
@@ -322,7 +322,7 @@ async fn get_queue_message_count(config: &Config) -> Result<u32> {
 
 async fn purge_queue(config: &Config) -> Result<()> {
     use lapin::options::QueuePurgeOptions;
-    
+
     let connection =
         Connection::connect(&config.rabbitmq_url, ConnectionProperties::default()).await?;
 
@@ -337,7 +337,7 @@ async fn purge_queue(config: &Config) -> Result<()> {
 
 async fn purge_dlq(config: &Config) -> Result<()> {
     use lapin::options::QueuePurgeOptions;
-    
+
     let connection =
         Connection::connect(&config.rabbitmq_url, ConnectionProperties::default()).await?;
 

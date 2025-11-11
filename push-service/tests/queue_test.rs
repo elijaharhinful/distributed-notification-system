@@ -142,7 +142,9 @@ async fn test_concurrent_message_processing() -> Result<()> {
         while let Some(Ok(delivery)) = consumer.next().await {
             rabbitmq.acknowledge(delivery.delivery_tag).await.unwrap();
             count += 1;
-            if count >= 2 { break; }
+            if count >= 2 {
+                break;
+            }
         }
         count
     });
@@ -189,8 +191,14 @@ async fn test_message_structure_preservation() -> Result<()> {
         assert_eq!(received.trace_id, original.trace_id);
         assert_eq!(received.user_id, original.user_id);
         assert_eq!(received.template_code, original.template_code);
-        assert_eq!(received.variables.get("user_name"), Some(&serde_json::json!("John Doe")));
-        assert_eq!(received.metadata.get("priority"), Some(&serde_json::json!("high")));
+        assert_eq!(
+            received.variables.get("user_name"),
+            Some(&serde_json::json!("John Doe"))
+        );
+        assert_eq!(
+            received.metadata.get("priority"),
+            Some(&serde_json::json!("high"))
+        );
 
         rabbitmq.acknowledge(delivery.delivery_tag).await?;
     }
