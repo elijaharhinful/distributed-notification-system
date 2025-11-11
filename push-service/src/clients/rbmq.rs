@@ -8,10 +8,7 @@ use lapin::{
     types::FieldTable,
 };
 
-use crate::{
-    config::Config,
-    models::message::{DlqMessage, NotificationMessage},
-};
+use crate::{config::Config, models::message::DlqMessage};
 
 pub struct RabbitMqClient {
     channel: Channel,
@@ -129,8 +126,4 @@ impl RabbitMqClient {
 
         Ok(())
     }
-}
-
-pub fn parse_message(payload: &[u8]) -> Result<NotificationMessage, Error> {
-    serde_json::from_slice(payload).map_err(|_| anyhow!("Failed to parse notification message"))
 }
