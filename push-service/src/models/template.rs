@@ -10,3 +10,8 @@ pub struct Template {
     pub body_text: String,
     pub variables: Vec<String>,
 }
+
+pub struct RenderedTemplate {
+    pub title: String,
+    pub body: String,
+}
