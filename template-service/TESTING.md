@@ -99,7 +99,7 @@ curl http://localhost:8084/health
 }
 ```
 
-✅ **Pass Criteria:** All services show `"status": "healthy"`
+**Pass Criteria:** All services show `"status": "healthy"`
 
 ---
 
