@@ -114,8 +114,6 @@ jobs:
           timeout 60 bash -c 'until nc -z localhost 5672; do sleep 1; done'
           echo "Waiting for Redis..."
           timeout 60 bash -c 'until nc -z localhost 6379; do sleep 1; done'
-          echo "Waiting for PostgreSQL..."
-          timeout 60 bash -c 'until nc -z localhost 5432; do sleep 1; done'
 
       - name: Create test environment file
         run: |
@@ -126,13 +124,7 @@ jobs:
           PREFETCH_COUNT=10
           REDIS_URL=redis://localhost:6379/0
           IDEMPOTENCY_TTL_SECONDS=3600
-          DATABASE_URL=postgres://postgres:postgres@localhost:5432/notifications_db
           TEMPLATE_SERVICE_URL=http://localhost:8001
-          FCM_SERVER_KEY=test_fcm_key
-          FCM_URL=https://fcm.googleapis.com/fcm/send
-          CIRCUIT_BREAKER_FAILURE_THRESHOLD=5
-          CIRCUIT_BREAKER_TIMEOUT_SECONDS=60
-          CIRCUIT_BREAKER_SUCCESS_THRESHOLD=3
           MAX_RETRY_ATTEMPTS=5
           INITIAL_RETRY_DELAY_MS=100
           MAX_RETRY_DELAY_MS=5000
@@ -196,21 +188,6 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-
-      postgres:
-        image: postgres:16-alpine
-        ports:
-          - 5432:5432
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: notifications_db
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -238,13 +215,7 @@ jobs:
           PREFETCH_COUNT=10
           REDIS_URL=redis://localhost:6379/0
           IDEMPOTENCY_TTL_SECONDS=3600
-          DATABASE_URL=postgres://postgres:postgres@localhost:5432/notifications_db
           TEMPLATE_SERVICE_URL=http://localhost:8001
-          FCM_SERVER_KEY=test_fcm_key
-          FCM_URL=https://fcm.googleapis.com/fcm/send
-          CIRCUIT_BREAKER_FAILURE_THRESHOLD=5
-          CIRCUIT_BREAKER_TIMEOUT_SECONDS=60
-          CIRCUIT_BREAKER_SUCCESS_THRESHOLD=3
           MAX_RETRY_ATTEMPTS=5
           INITIAL_RETRY_DELAY_MS=100
           MAX_RETRY_DELAY_MS=5000
