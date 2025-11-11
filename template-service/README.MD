@@ -1,7 +1,5 @@
 # Template Service
 
-![CI Status](https://github.com/<your-username>/distributed-notification-system/workflows/Template%20Service%20CI/badge.svg?branch=feat/template-service)
-
 Microservice for managing reusable notification templates with versioning, caching, and event publishing.
 
 ## Quick Start
@@ -54,18 +52,18 @@ REDIS_URL=redis://localhost:6379
 RABBITMQ_URL=amqp://guest:guest@localhost:5672
 ```
 
-**⚠️ Never commit `.env` files!**
+**Never commit `.env` files!**
 
 ## Features
 
-✅ **Template CRUD** - Create, read, update, delete with versioning  
-✅ **Caching** - Redis-backed caching with automatic invalidation  
-✅ **Event Publishing** - RabbitMQ events on template changes  
-✅ **Circuit Breaker** - Automatic failure detection and recovery  
-✅ **Health Checks** - Comprehensive health monitoring  
-✅ **Swagger Docs** - Interactive API documentation  
-✅ **CI/CD** - GitHub Actions pipeline  
-✅ **Docker Ready** - Production-ready containerization  
+**Template CRUD** - Create, read, update, delete with versioning  
+**Caching** - Redis-backed caching with automatic invalidation  
+**Event Publishing** - RabbitMQ events on template changes  
+**Circuit Breaker** - Automatic failure detection and recovery  
+**Health Checks** - Comprehensive health monitoring  
+**Swagger Docs** - Interactive API documentation  
+**CI/CD** - GitHub Actions pipeline  
+**Docker Ready** - Production-ready containerization  
 
 ## Development Commands
 
@@ -147,12 +145,12 @@ npm test -- --testPathPattern=e2e
 Pipeline runs on push to `main`, `develop`, or `feat/**` branches.
 
 **Checks:**
-- ✅ Linting (no `any` types allowed)
-- ✅ TypeScript build
-- ✅ Database migrations
-- ✅ Unit + Integration tests
-- ✅ Docker image build
-- ✅ Security audit
+- Linting (no `any` types allowed)
+- TypeScript build
+- Database migrations
+- Unit + Integration tests
+- Docker image build
+- Security audit
 
 ## Production Deployment
 
