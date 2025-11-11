@@ -1,7 +1,8 @@
 use anyhow::Result;
 use push_service::{
     clients::{
-        fcm::FcmClient, rbmq::RabbitMqClient, redis::RedisClient, template::TemplateServiceClient,
+        circuit_breaker::CircuitBreaker, fcm::FcmClient, rbmq::RabbitMqClient, redis::RedisClient,
+        template::TemplateServiceClient,
     },
     config::Config,
     models::{message::NotificationMessage, status::IdempotencyStatus},
@@ -16,9 +17,24 @@ async fn test_end_to_end_notification_success_flow() -> Result<()> {
     let config = Config::load()?;
     RabbitMqClient::connect(&config).await?;
     let mut redis_client = RedisClient::connect(&config).await?;
-    let template_service_client = TemplateServiceClient::new(&config).await?;
 
-    let fcm_client = FcmClient::new(&config).await;
+    let redis_for_cb = redis::Client::open(config.redis_url.as_str())?;
+    let redis_conn = redis_for_cb.get_multiplexed_async_connection().await?;
+
+    let fcm_cb = CircuitBreaker::new(
+        "fcm".to_string(),
+        redis_conn.clone(),
+        config.circuit_breaker_config(),
+    );
+
+    let template_cb = CircuitBreaker::new(
+        "template_service".to_string(),
+        redis_conn,
+        config.circuit_breaker_config(),
+    );
+
+    let mut template_service_client = TemplateServiceClient::new(&config, template_cb).await?;
+    let mut fcm_client = FcmClient::new(&config, fcm_cb).await;
 
     let message = create_notification_message("e2e_success");
     let payload = serde_json::to_string(&message)?;
@@ -28,13 +44,11 @@ async fn test_end_to_end_notification_success_flow() -> Result<()> {
     let result = process_message(
         &payload,
         &mut redis_client,
-        &template_service_client,
-        &fcm_client,
+        &mut template_service_client,
+        &mut fcm_client,
     )
     .await;
 
-    // Note: This might fail if template service is not running, which is acceptable
-    // The test validates the idempotency behavior regardless
     match result {
         Ok(_) => {
             println!("Message processed successfully");
@@ -67,8 +81,24 @@ async fn test_end_to_end_notification_success_flow() -> Result<()> {
 async fn test_end_to_end_duplicate_rejection() -> Result<()> {
     let config = Config::load()?;
     let mut redis_client = RedisClient::connect(&config).await?;
-    let template_service_client = TemplateServiceClient::new(&config).await?;
-    let fcm_client = FcmClient::new(&config).await;
+
+    let redis_for_cb = redis::Client::open(config.redis_url.as_str())?;
+    let redis_conn = redis_for_cb.get_multiplexed_async_connection().await?;
+
+    let fcm_cb = CircuitBreaker::new(
+        "fcm".to_string(),
+        redis_conn.clone(),
+        config.circuit_breaker_config(),
+    );
+
+    let template_cb = CircuitBreaker::new(
+        "template_service".to_string(),
+        redis_conn,
+        config.circuit_breaker_config(),
+    );
+
+    let mut template_service_client = TemplateServiceClient::new(&config, template_cb).await?;
+    let mut fcm_client = FcmClient::new(&config, fcm_cb).await;
 
     let message = create_notification_message("e2e_duplicate");
     let payload = serde_json::to_string(&message)?;
@@ -76,8 +106,8 @@ async fn test_end_to_end_duplicate_rejection() -> Result<()> {
     let first_result = process_message(
         &payload,
         &mut redis_client,
-        &template_service_client,
-        &fcm_client,
+        &mut template_service_client,
+        &mut fcm_client,
     )
     .await;
 
@@ -94,8 +124,8 @@ async fn test_end_to_end_duplicate_rejection() -> Result<()> {
         let result2 = process_message(
             &payload,
             &mut redis_client,
-            &template_service_client,
-            &fcm_client,
+            &mut template_service_client,
+            &mut fcm_client,
         )
         .await;
         assert!(result2.is_ok(), "Duplicate should be silently handled");
@@ -109,7 +139,6 @@ async fn test_end_to_end_duplicate_rejection() -> Result<()> {
             "Duplicate processing should not change state"
         );
     } else {
-        // If first call failed (template service unavailable), verify it was marked as failed
         assert_eq!(
             status_after_first,
             IdempotencyStatus::Failed,
@@ -129,16 +158,32 @@ async fn test_end_to_end_duplicate_rejection() -> Result<()> {
 async fn test_end_to_end_invalid_json_rejection() -> Result<()> {
     let config = Config::load()?;
     let mut redis_client = RedisClient::connect(&config).await?;
-    let template_service_client = TemplateServiceClient::new(&config).await?;
-    let fcm_client = FcmClient::new(&config).await;
+
+    let redis_for_cb = redis::Client::open(config.redis_url.as_str())?;
+    let redis_conn = redis_for_cb.get_multiplexed_async_connection().await?;
+
+    let fcm_cb = CircuitBreaker::new(
+        "fcm".to_string(),
+        redis_conn.clone(),
+        config.circuit_breaker_config(),
+    );
+
+    let template_cb = CircuitBreaker::new(
+        "template_service".to_string(),
+        redis_conn,
+        config.circuit_breaker_config(),
+    );
+
+    let mut fcm_client = FcmClient::new(&config, fcm_cb).await;
+    let mut template_service_client = TemplateServiceClient::new(&config, template_cb).await?;
 
     let invalid_payload = "{ invalid json }";
 
     let result = process_message(
         invalid_payload,
         &mut redis_client,
-        &template_service_client,
-        &fcm_client,
+        &mut template_service_client,
+        &mut fcm_client,
     )
     .await;
 
@@ -152,8 +197,24 @@ async fn test_end_to_end_invalid_json_rejection() -> Result<()> {
 async fn test_end_to_end_complete_message_processing() -> Result<()> {
     let config = Config::load()?;
     let mut redis_client = RedisClient::connect(&config).await?;
-    let template_service_client = TemplateServiceClient::new(&config).await?;
-    let fcm_client = FcmClient::new(&config).await;
+
+    let redis_for_cb = redis::Client::open(config.redis_url.as_str())?;
+    let redis_conn = redis_for_cb.get_multiplexed_async_connection().await?;
+
+    let fcm_cb = CircuitBreaker::new(
+        "fcm".to_string(),
+        redis_conn.clone(),
+        config.circuit_breaker_config(),
+    );
+
+    let template_cb = CircuitBreaker::new(
+        "template_service".to_string(),
+        redis_conn,
+        config.circuit_breaker_config(),
+    );
+
+    let mut template_service_client = TemplateServiceClient::new(&config, template_cb).await?;
+    let mut fcm_client = FcmClient::new(&config, fcm_cb).await;
 
     let mut variables = HashMap::new();
     variables.insert("user_name".to_string(), serde_json::json!("Alice"));
@@ -180,8 +241,8 @@ async fn test_end_to_end_complete_message_processing() -> Result<()> {
     let _ = process_message(
         &payload,
         &mut redis_client,
-        &template_service_client,
-        &fcm_client,
+        &mut template_service_client,
+        &mut fcm_client,
     )
     .await;
 
@@ -204,8 +265,24 @@ async fn test_end_to_end_complete_message_processing() -> Result<()> {
 async fn test_end_to_end_graceful_degradation() -> Result<()> {
     let config = Config::load()?;
     let mut redis_client = RedisClient::connect(&config).await?;
-    let template_service_client = TemplateServiceClient::new(&config).await?;
-    let fcm_client = FcmClient::new(&config).await;
+
+    let redis_for_cb = redis::Client::open(config.redis_url.as_str())?;
+    let redis_conn = redis_for_cb.get_multiplexed_async_connection().await?;
+
+    let fcm_cb = CircuitBreaker::new(
+        "fcm".to_string(),
+        redis_conn.clone(),
+        config.circuit_breaker_config(),
+    );
+
+    let template_cb = CircuitBreaker::new(
+        "template_service".to_string(),
+        redis_conn,
+        config.circuit_breaker_config(),
+    );
+
+    let mut template_service_client = TemplateServiceClient::new(&config, template_cb).await?;
+    let mut fcm_client = FcmClient::new(&config, fcm_cb).await;
 
     let message = create_notification_message("e2e_degradation");
     let payload = serde_json::to_string(&message)?;
@@ -213,12 +290,11 @@ async fn test_end_to_end_graceful_degradation() -> Result<()> {
     let _ = process_message(
         &payload,
         &mut redis_client,
-        &template_service_client,
-        &fcm_client,
+        &mut template_service_client,
+        &mut fcm_client,
     )
     .await;
 
-    // Verify idempotency was set (regardless of template service availability)
     let status = redis_client
         .check_idempotency(&message.idempotency_key)
         .await?;
@@ -246,13 +322,35 @@ async fn test_end_to_end_high_throughput() -> Result<()> {
 
         let handle = tokio::spawn(async move {
             let mut redis = RedisClient::connect(&config_clone).await.unwrap();
-            let template_service = TemplateServiceClient::new(&config_clone).await.unwrap();
-            let fcm_client = FcmClient::new(&config_clone).await;
+
+            let redis_for_cb = redis::Client::open(config_clone.redis_url.as_str()).unwrap();
+            let redis_conn = redis_for_cb
+                .get_multiplexed_async_connection()
+                .await
+                .unwrap();
+
+            let fcm_cb = CircuitBreaker::new(
+                format!("fcm_{}", i),
+                redis_conn.clone(),
+                config_clone.circuit_breaker_config(),
+            );
+
+            let template_cb = CircuitBreaker::new(
+                format!("template_service_{}", i),
+                redis_conn,
+                config_clone.circuit_breaker_config(),
+            );
+
+            let mut template_service = TemplateServiceClient::new(&config_clone, template_cb)
+                .await
+                .unwrap();
+            let mut fcm_client = FcmClient::new(&config_clone, fcm_cb).await;
 
             let message = create_notification_message(&format!("throughput_{}", i));
             let payload = serde_json::to_string(&message).unwrap();
 
-            let _ = process_message(&payload, &mut redis, &template_service, &fcm_client).await;
+            let _ =
+                process_message(&payload, &mut redis, &mut template_service, &mut fcm_client).await;
 
             let status = redis
                 .check_idempotency(&message.idempotency_key)
@@ -260,7 +358,6 @@ async fn test_end_to_end_high_throughput() -> Result<()> {
                 .unwrap();
             let success = status != IdempotencyStatus::NotFound;
 
-            // Cleanup
             if success {
                 cleanup_redis_key(&config_clone, &message.idempotency_key)
                     .await
@@ -324,8 +421,24 @@ async fn test_end_to_end_message_ordering() -> Result<()> {
 #[tokio::test]
 async fn test_end_to_end_redis_resilience() -> Result<()> {
     let config = Config::load()?;
-    let template_service_client = TemplateServiceClient::new(&config).await?;
-    let fcm_client = FcmClient::new(&config).await;
+
+    let redis_for_cb = redis::Client::open(config.redis_url.as_str())?;
+    let redis_conn = redis_for_cb.get_multiplexed_async_connection().await?;
+
+    let fcm_cb = CircuitBreaker::new(
+        "fcm".to_string(),
+        redis_conn.clone(),
+        config.circuit_breaker_config(),
+    );
+
+    let template_cb = CircuitBreaker::new(
+        "template_service".to_string(),
+        redis_conn,
+        config.circuit_breaker_config(),
+    );
+
+    let mut template_service_client = TemplateServiceClient::new(&config, template_cb).await?;
+    let mut fcm_client = FcmClient::new(&config, fcm_cb).await;
 
     let message = create_notification_message("redis_resilience");
     let payload = serde_json::to_string(&message)?;
@@ -335,8 +448,8 @@ async fn test_end_to_end_redis_resilience() -> Result<()> {
     let _ = process_message(
         &payload,
         &mut redis_client,
-        &template_service_client,
-        &fcm_client,
+        &mut template_service_client,
+        &mut fcm_client,
     )
     .await;
 

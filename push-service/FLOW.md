@@ -100,15 +100,16 @@ Content-Type: application/json
 
 **Payload**:
 ```json
-{
-  "to": "fcm_device_token_xyz123",
-  "notification": {
-    "title": "Welcome John Doe!",
-    "body": "Welcome John Doe! Visit: https://example.com/welcome"
-  },
-  "data": {
-    "trace_id": "a3f5b9c1-2d4e-4a5f-9b2c-7e8d9f1a2b3c",
-    "link": "https://example.com/welcome"
+"message": {
+    "token": "fcm_device_token_xyz123",
+    "notification": {
+      "title": "Welcome John Doe!",
+      "body": "Welcome John Doe! Visit: https://example.com/welcome"
+    },
+    "data": {
+      "trace_id": "a3f5b9c1-2d4e-4a5f-9b2c-7e8d9f1a2b3c",
+      "link": "https://example.com/welcome"
+    }
   }
 }
 ```

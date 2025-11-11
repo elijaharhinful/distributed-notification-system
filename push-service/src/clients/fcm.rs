@@ -4,9 +4,10 @@ use anyhow::{Error, Result, anyhow};
 use reqwest::Client;
 
 use crate::{
+    clients::circuit_breaker::CircuitBreaker,
     config::Config,
     models::{
-        fcm::{FcmNotification, FcmPayload},
+        fcm::{FcmMessage, FcmNotification, FcmRequest},
         retry::RetryConfig,
     },
     utils::retry_with_backoff,
@@ -16,31 +17,32 @@ pub struct FcmClient {
     http_client: Client,
     fcm_project_id: String,
     retry_config: RetryConfig,
+    circuit_breaker: CircuitBreaker,
 }
 
 impl FcmClient {
-    pub async fn new(config: &Config) -> Self {
+    pub async fn new(config: &Config, circuit_breaker: CircuitBreaker) -> Self {
         Self {
             http_client: Client::new(),
             fcm_project_id: config.fcm_project_id.clone(),
-            retry_config: RetryConfig::from_config(config),
+            retry_config: config.retry_config(),
+            circuit_breaker,
         }
     }
 
     pub async fn send_notification(
-        &self,
+        &mut self,
         device_token: &str,
         title: &str,
         body: &str,
         trace_id: &str,
         data: Option<HashMap<String, String>>,
     ) -> Result<(), Error> {
-        let device_token = device_token.to_string();
         let mut payload_data = data.unwrap_or_default();
         payload_data.insert("trace_id".to_string(), trace_id.to_string());
 
-        let payload = FcmPayload {
-            to: device_token.to_string(),
+        let message = FcmMessage {
+            token: device_token.to_string(),
             notification: FcmNotification {
                 title: title.to_string(),
                 body: body.to_string(),
@@ -48,10 +50,41 @@ impl FcmClient {
             data: Some(payload_data),
         };
 
-        retry_with_backoff(&self.retry_config, || self.send_notification_once(&payload)).await
+        let request = FcmRequest { message };
+
+        let http_client = self.http_client.clone();
+        let fcm_project_id = self.fcm_project_id.clone();
+        let retry_config = self.retry_config.clone();
+
+        self.circuit_breaker
+            .call(|| {
+                Self::send_with_retry(
+                    http_client.clone(),
+                    fcm_project_id.clone(),
+                    retry_config.clone(),
+                    request.clone(),
+                )
+            })
+            .await
     }
 
-    async fn send_notification_once(&self, payload: &FcmPayload) -> Result<(), Error> {
+    async fn send_with_retry(
+        http_client: Client,
+        fcm_project_id: String,
+        retry_config: RetryConfig,
+        request: FcmRequest,
+    ) -> Result<(), Error> {
+        retry_with_backoff(&retry_config, || {
+            Self::send_notification_once(http_client.clone(), fcm_project_id.clone(), &request)
+        })
+        .await
+    }
+
+    async fn send_notification_once(
+        http_client: Client,
+        fcm_project_id: String,
+        request: &FcmRequest,
+    ) -> Result<(), Error> {
         let provider = gcp_auth::provider().await?;
         let scopes = &["https://www.googleapis.com/auth/firebase.messaging"];
 
@@ -59,14 +92,13 @@ impl FcmClient {
 
         let url = format!(
             "https://fcm.googleapis.com/v1/projects/{}/messages:send",
-            self.fcm_project_id
+            fcm_project_id
         );
 
-        let response = self
-            .http_client
+        let response = http_client
             .post(&url)
             .bearer_auth(token.as_str())
-            .json(&payload)
+            .json(&request)
             .send()
             .await?;
 
