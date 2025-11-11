@@ -2,6 +2,8 @@ use anyhow::{Error, Result, anyhow};
 use dotenvy::dotenv;
 use serde::Deserialize;
 
+use crate::models::{circuit_breaker::CircuitBreakerConfig, retry::RetryConfig};
+
 #[derive(Clone, Deserialize, Debug)]
 pub struct Config {
     pub rabbitmq_url: String,
@@ -16,8 +18,7 @@ pub struct Config {
 
     pub template_service_url: String,
 
-    pub fcm_server_key: String,
-    pub fcm_url: String,
+    pub fcm_project_id: String,
 
     pub circuit_breaker_failure_threshold: u32,
     pub circuit_breaker_timeout_seconds: u64,
@@ -40,5 +41,22 @@ impl Config {
         let config = envy::from_env::<Self>()
             .map_err(|_| anyhow!("Invalid or missing environmental variable"))?;
         Ok(config)
+    }
+
+    pub fn retry_config(&self) -> RetryConfig {
+        RetryConfig {
+            max_attempts: self.max_retry_attempts,
+            initial_delay_ms: self.initial_retry_delay_ms,
+            max_delay_ms: self.max_retry_delay_ms,
+            backoff_multiplier: self.retry_backoff_multiplier,
+        }
+    }
+
+    pub fn circuit_breaker_config(&self) -> CircuitBreakerConfig {
+        CircuitBreakerConfig {
+            failure_threshold: self.circuit_breaker_failure_threshold,
+            timeout_seconds: self.circuit_breaker_timeout_seconds,
+            success_threshold: self.circuit_breaker_success_threshold,
+        }
     }
 }
