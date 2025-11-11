@@ -13,7 +13,9 @@ async function bootstrap() {
   app.useLogger(logger);
 
   // Global prefix
-  app.setGlobalPrefix(configService.get('apiPrefix') || 'api/v1');
+  app.setGlobalPrefix(configService.get('apiPrefix') || 'api/v1', {
+    exclude: ['health', 'health/test-redis'],
+  });
 
   // Global validation pipe
   app.useGlobalPipes(
