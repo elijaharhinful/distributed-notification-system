@@ -12,6 +12,14 @@ pub enum NotificationStatus {
     Dlq,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum IdempotencyStatus {
+    NotFound,
+    Processing,
+    Sent,
+    Failed,
+}
+
 impl Display for NotificationStatus {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {

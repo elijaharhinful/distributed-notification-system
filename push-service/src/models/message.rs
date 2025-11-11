@@ -20,8 +20,5 @@ pub struct NotificationMessage {
 pub struct DlqMessage {
     pub original_message: NotificationMessage,
     pub failure_reason: String,
-    pub retry_count: u32,
-    pub first_attempt_at: String,
-    pub last_attempt_at: String,
-    pub trace_id: String,
+    pub failed_at: String,
 }
