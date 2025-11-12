@@ -13,6 +13,7 @@ import { LoginDto } from './dto/login.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { JwtPayload } from './strategies/jwt.strategy';
+import { ValidateTokenResponseDto } from './dto/validate-token-response.dto';
 
 @Injectable()
 export class AuthService {
@@ -169,7 +170,7 @@ export class AuthService {
     }
   }
 
-  async validateToken(token: string): Promise<boolean> {
+  async validateToken(token: string): Promise<ValidateTokenResponseDto> {
     try {
       const payload: JwtPayload = this.jwtService.verify(token);
 
@@ -178,9 +179,37 @@ export class AuthService {
         `${this.BLACKLIST_PREFIX}${payload.jti}`,
       );
 
-      return !isBlacklisted;
-    } catch {
-      return false;
+      if (isBlacklisted) {
+        return {
+          valid: false,
+          reason: 'Token has been revoked',
+        };
+      }
+
+      // Verify user still exists
+      const user = await this.usersService.findOne(payload.sub);
+      if (!user) {
+        return {
+          valid: false,
+          reason: 'User no longer exists',
+        };
+      }
+
+      return {
+        valid: true,
+        user_id: payload.sub,
+        email: payload.email,
+        push_token: user.push_token ?? undefined,
+        expires_at: payload.exp,
+      };
+    } catch (error) {
+      return {
+        valid: false,
+        reason:
+          error.name === 'TokenExpiredError'
+            ? 'Token has expired'
+            : 'Invalid token',
+      };
     }
   }
 
