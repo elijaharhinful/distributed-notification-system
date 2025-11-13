@@ -35,11 +35,7 @@ async function bootstrap() {
   );
 
   app.enableCors({
-    origin:
-      // configService.get('environment') === 'development'
-      //   ? '*'
-      //   : ['https://yourdomain.com'],
-      '*',
+    origin: '*',
     credentials: true,
   });
 
@@ -64,11 +60,6 @@ async function bootstrap() {
       },
       'JWT-auth',
     )
-    // .addServer(
-    //   `http://localhost:${configService.get('port')}`,
-    //   'Local Development',
-    // )
-    // .addServer('https://api.yourdomain.com', 'Production')
     .build();
 
   const document = SwaggerModule.createDocument(app, swaggerConfig);
