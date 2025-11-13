@@ -18,7 +18,7 @@ COPY --from=development /app/node_modules /usr/src/app/node_modules
 
 COPY --from=development /app/dist /usr/src/app/dist
 
-EXPOSE 3000
+EXPOSE 3001
 
 CMD ["node", "dist/main"]
 
