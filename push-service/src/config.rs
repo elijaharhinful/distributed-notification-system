@@ -32,6 +32,15 @@ pub struct Config {
     pub worker_concurrency: usize,
 
     pub server_port: u16,
+
+    #[serde(default = "default_push_queue_ttl_ms")]
+    pub push_queue_ttl_ms: u32,
+
+    #[serde(default = "default_dead_letter_exchange")]
+    pub dead_letter_exchange: String,
+
+    #[serde(default = "default_dead_letter_routing_key")]
+    pub dead_letter_routing_key: String,
 }
 
 impl Config {
@@ -59,4 +68,16 @@ impl Config {
             success_threshold: self.circuit_breaker_success_threshold,
         }
     }
+}
+
+fn default_push_queue_ttl_ms() -> u32 {
+    3_600_000
+}
+
+fn default_dead_letter_exchange() -> String {
+    "dlx".to_string()
+}
+
+fn default_dead_letter_routing_key() -> String {
+    "failed".to_string()
 }

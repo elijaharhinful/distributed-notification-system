@@ -95,6 +95,8 @@ services:
 
   push-service:
     build: ./push-service
+    ports:
+    - "8080:8080"
     depends_on:
       rabbitmq:
         condition: service_healthy
