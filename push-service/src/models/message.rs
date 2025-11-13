@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NotificationMessage {
-    pub notification_id: String,
     pub idempotency_key: String,
     pub notification_type: String,
     pub user_id: String,
