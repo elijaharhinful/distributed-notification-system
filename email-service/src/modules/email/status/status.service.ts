@@ -7,7 +7,7 @@ interface StatusUpdate {
   status: 'pending' | 'delivered' | 'failed';
   timestamp: Date;
   error?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 @Injectable()
@@ -35,9 +35,11 @@ export class StatusService {
         `Status updated for ${update.notification_id}: ${update.status}`,
       );
     } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
       this.logger.error(
         `Failed to update status for ${update.notification_id}`,
-        error,
+        errorMessage,
       );
     }
   }
