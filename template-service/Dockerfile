@@ -1,37 +1,40 @@
-FROM node:20-alpine
+FROM node:20-alpine AS builder
 
-# Install curl for healthcheck
-RUN apk add --no-cache curl
-
-# Create app directory
 WORKDIR /app
 
-# Create non-root user
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nestjs -u 1001
-
-# Copy package files
 COPY package*.json ./
 
-# Install dependencies as root
-RUN npm ci --silent --only=production && \
+# Install ALL dependencies for build
+RUN npm ci --silent && \
     npm cache clean --force
 
-# Copy application code
-COPY --chown=nestjs:nodejs . .
+COPY . .
 
 # Build application
 RUN npm run build
 
-# Switch to non-root user
+# Production stage
+FROM node:20-alpine
+
+WORKDIR /app
+
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nestjs -u 1001
+
+COPY package*.json ./
+
+# Install only production dependencies
+RUN npm ci --silent --only=production && \
+    npm cache clean --force
+
+# Copy built files from builder
+COPY --from=builder --chown=nestjs:nodejs /app/dist ./dist
+
 USER nestjs
 
-# Expose port
-EXPOSE 8084
+EXPOSE 3002
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-  CMD curl -f http://localhost:8084/health || exit 1
+  CMD node -e "require('http').get('http://localhost:8084/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"
 
-# Start application
 CMD ["node", "dist/main.js"]

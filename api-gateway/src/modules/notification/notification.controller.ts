@@ -6,6 +6,7 @@ import {
   Param,
   Headers,
   UseGuards,
+  Request,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -21,7 +22,7 @@ import { SkipAuth } from 'src/core/auth/skip-auth.decorator';
 
 @ApiTags('notifications')
 @Controller('notifications')
-@SkipAuth()
+// @SkipAuth()
 // @UseGuards(JwtAuthGuard)
 // @ApiBearerAuth()
 export class NotificationController {
@@ -41,6 +42,8 @@ export class NotificationController {
     description: 'Unique key to prevent duplicate requests',
     required: true,
   })
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT')
   async sendNotification(
     @Body() dto: SendNotificationDto,
     @Headers('x-idempotency-key') idempotencyKey: string,
@@ -52,6 +55,8 @@ export class NotificationController {
   /**
    * Gateway-specific endpoint: Get notification status
    */
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT')
   @Get('status/:notification_id')
   @ApiOperation({
     summary: 'Get notification status (Gateway tracks this)',

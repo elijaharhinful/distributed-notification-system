@@ -13,108 +13,101 @@ import { Request, Response, NextFunction } from 'express';
 import { ProxyService } from './proxy.service';
 import { getServiceByPrefix } from '../../config/service-registry';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { SkipAuth } from '../auth/skip-auth.decorator';
-
-const GATEWAY_INTERNAL_ROUTES = ['/notifications', '/auth', '/health'];
+import { ApiBearerAuth, ApiExcludeController } from '@nestjs/swagger';
 
 @Controller()
+@ApiExcludeController()
 export class ProxyController {
   private readonly logger = new Logger(ProxyController.name);
 
   constructor(private readonly proxyService: ProxyService) {}
 
+  private isPublicRoute(path: string): boolean {
+    return ['/auth/login', '/users/'].some((route) => path.startsWith(route));
+  }
+
   /**
-   * Catch-all route handler for proxying requests
-   * This handles ALL HTTP methods (GET, POST, PUT, PATCH, DELETE, etc.)
+   * Proxy service routes only - specific patterns to avoid conflicts
    */
-  @All('users/*')
-  @All('templates/*')
-  @All('email/*')
-  @All('push/*')
+  @All(['/users*', '/templates*'])
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT')
   async proxyRequest(
     @Req() req: Request,
     @Res() res: Response,
     @Next() next: NextFunction
   ) {
     try {
-      const path = req.path;
+      // Get the full path including /api prefix if present
+      const fullPath = req.path;
+      // Strip /api prefix for service matching
+      const path = fullPath.replace(/^\/api/, '').replace(/\/$/, '');
       const method = req.method;
 
-      this.logger.debug(`Incoming request: ${method} ${path}`);
+      this.logger.debug(`Proxying request: ${method} ${fullPath} -> ${path}`);
 
-      if (GATEWAY_INTERNAL_ROUTES.some((prefix) => path.startsWith(prefix))) {
-        this.logger.debug(`Bypassing proxy for internal route: ${path}`);
-        return next(); // let Nest route it to NotificationController, etc.
-      }
-
-      // Find the target service based on the path
       const service = getServiceByPrefix(path);
-
       if (!service) {
+        this.logger.error(`No service found for path: ${path}`);
         throw new HttpException(
           {
             success: false,
             error: 'SERVICE_NOT_FOUND',
-            message: `No service found for path: ${path}`,
-            meta: null,
+            message: `No service configured for path ${path}`,
           },
           HttpStatus.NOT_FOUND
         );
       }
 
-      // Check if service requires auth
-      if (service.requiresAuth && !req.user) {
+      this.logger.debug(`Matched service: ${service.name} (${service.url})`);
+
+      if (service.requiresAuth && !req.user && !this.isPublicRoute(path)) {
         throw new HttpException(
           {
             success: false,
             error: 'UNAUTHORIZED',
             message: 'Authentication required',
-            meta: null,
           },
           HttpStatus.UNAUTHORIZED
         );
       }
 
-      // Proxy the request to the target service
+      // Forward headers
+      const forwardHeaders = { ...req.headers } as Record<string, string>;
+      if (req.user) {
+        forwardHeaders['X-User-Id'] = req.user.user_id;
+        forwardHeaders['X-User-Email'] = req.user.email;
+        forwardHeaders['X-User-Name'] = req.user.name;
+      }
+
       const response = await this.proxyService.proxyRequest(
         service,
         path,
         method,
         req.body,
-        req.headers as Record<string, string>,
+        forwardHeaders,
         req.query
       );
 
-      // Forward the response status and headers
       res.status(response.status);
-
-      // Copy response headers
+      const skipHeaders = ['transfer-encoding', 'connection', 'keep-alive'];
       Object.entries(response.headers).forEach(([key, value]) => {
-        res.setHeader(key, value as string);
+        if (!skipHeaders.includes(key.toLowerCase()))
+          res.setHeader(key, value as string);
       });
 
-      // Send the response body
       return res.send(response.data);
     } catch (error) {
       this.logger.error('Proxy error:', error);
-
-      if (error instanceof HttpException) {
-        throw error;
-      }
-
-      // If it's an Axios error with response, forward it
-      if (error.response) {
+      if (error instanceof HttpException) throw error;
+      if (error.response)
         return res.status(error.response.status).send(error.response.data);
-      }
 
-      // Generic error
       throw new HttpException(
         {
           success: false,
           error: 'PROXY_ERROR',
-          message: 'Failed to proxy request',
-          meta: null,
+          message: error.message || 'Failed to proxy request',
         },
         HttpStatus.BAD_GATEWAY
       );

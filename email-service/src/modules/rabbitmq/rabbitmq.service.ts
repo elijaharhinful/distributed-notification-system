@@ -25,6 +25,33 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
       throw error;
     }
   }
+}
+
+  private async setupQueues() {
+    const exchange = 'notifications.direct';
+    const emailQueue = 'email.queue';
+    const failedQueue = 'failed.queue';
+
+    // Declare exchange
+    await this.channel.assertExchange(exchange, 'direct', { durable: true });
+
+    // Declare dead letter exchange and queue
+    await this.channel.assertExchange('dlx.exchange', 'direct', { durable: true });
+    await this.channel.assertQueue(failedQueue, {
+      durable: true,
+    });
+    await this.channel.bindQueue(failedQueue, 'dlx.exchange', 'failed');
+
+    // Declare email queue with DLX
+    await this.channel.assertQueue(emailQueue, {
+      durable: true,
+    });
+
+    // Bind queue to exchange
+    await this.channel.bindQueue(emailQueue, exchange, 'email');
+
+    this.logger.log('Queues and exchanges configured');
+  }
 
   async onModuleDestroy(): Promise<void> {
     try {

@@ -16,7 +16,10 @@ export class NotificationService {
 
   constructor(
     @Inject('RABBITMQ_CLIENT') private readonly rabbitMQClient: ClientProxy,
-    @Inject('REDIS_CLIENT') private readonly redis: Redis,
+    @Inject('RABBITMQ_CLIENT_EMAIL')
+    private readonly rabbitMQClientEmail: ClientProxy,
+    @Inject('REDIS_CLIENT')
+    private readonly redis: Redis,
     private readonly configService: ConfigService
   ) {}
 
@@ -28,6 +31,10 @@ export class NotificationService {
     idempotencyKey: string,
     user: any
   ) {
+    this.logger.log(
+      `User info in NotificationService: ${JSON.stringify(user)}`
+    );
+
     // Check idempotency
     const idempotencyCheck = await this.redis.get(
       `idempotency:${idempotencyKey}`
@@ -45,7 +52,13 @@ export class NotificationService {
       await this.redis.setex(`idempotency:${idempotencyKey}`, 86400, '1');
 
       // Store notification status
-      await this.storeNotificationStatus(dto.request_id, dto, dto.user_id);
+      await this.storeNotificationStatus(
+        dto.request_id,
+        dto,
+        user.user_id,
+        'pending',
+        user.push_token
+      );
 
       // Determine queues based on type
       const queues = this.getQueuesForType(dto.notification_type);
@@ -54,13 +67,20 @@ export class NotificationService {
       const message = {
         notification_id: dto.request_id,
         idempotency_key: idempotencyKey,
-        ...dto,
-        created_by: dto.user_id,
+        user_id: user.user_id,
+        created_by: user.user_id,
         timestamp: new Date().toISOString(),
+        push_token: user.push_token,
+        ...dto,
+        to_email: user.email,
       };
 
       for (const queue of queues) {
-        this.rabbitMQClient.emit(queue, message);
+        if (queue === 'email.queue') {
+          this.rabbitMQClientEmail.emit(queue, message);
+        } else {
+          this.rabbitMQClient.emit(queue, message);
+        }
         this.logger.log(`📤 Message sent to queue: ${queue}`);
       }
 
@@ -79,8 +99,9 @@ export class NotificationService {
       await this.storeNotificationStatus(
         dto.request_id,
         dto,
-        dto.user_id,
-        'failed'
+        user.user_id,
+        'failed',
+        user.push_token
       );
       throw error;
     }
@@ -111,13 +132,15 @@ export class NotificationService {
     notificationId: string,
     dto: SendNotificationDto,
     createdBy: string,
-    status: string = 'pending'
+    status: string = 'pending',
+    push_token: string
   ): Promise<void> {
     const data = {
       notification_id: notificationId,
       status,
       type: dto.notification_type,
-      user_id: dto.user_id,
+      user_id: createdBy,
+      push_token: push_token,
       template_code: dto.template_code,
       created_by: createdBy,
       created_at: new Date().toISOString(),
@@ -139,9 +162,9 @@ export class NotificationService {
 
     switch (type) {
       case 'email':
-        return [`${prefix}.email.queue`];
+        return [`email.queue`];
       case 'push':
-        return [`${prefix}.push.queue`];
+        return [`push_notifications`];
       default:
         throw new BadRequestException(`Invalid notification type: ${type}`);
     }

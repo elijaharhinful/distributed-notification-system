@@ -20,6 +20,8 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { GetUser } from './decorators/get-user.decorator';
 import { ApiResponseDto } from '../../common/dto/api-response.dto';
 import { Public } from './decorators/public.decorator';
+import { ValidateTokenDto } from './dto/validate-token.dto';
+import { ValidateTokenResponseDto } from './dto/validate-token-response.dto';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -84,6 +86,26 @@ export class AuthController {
       success: true,
       data: null,
       message: 'Logout successful',
+    };
+  }
+
+  @Post('validate')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Validate access token' })
+  @ApiResponse({
+    status: 200,
+    description: 'Token validation result',
+    type: ValidateTokenResponseDto,
+  })
+  async validateToken(
+    @Body() validateTokenDto: ValidateTokenDto,
+  ): Promise<ApiResponseDto<ValidateTokenResponseDto>> {
+    const data = await this.authService.validateToken(validateTokenDto.token);
+    return {
+      success: true,
+      data,
+      message: data.valid ? 'Token is valid' : 'Token validation failed',
     };
   }
 }

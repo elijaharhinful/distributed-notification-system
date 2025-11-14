@@ -23,3 +23,9 @@ pub struct DlqMessage {
     pub failure_reason: String,
     pub failed_at: String,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct Envelope {
+    pub pattern: String,
+    pub data: NotificationMessage,
+}
